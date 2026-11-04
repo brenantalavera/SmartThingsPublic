@@ -192,3 +192,56 @@ Real-time push alerts via SmartThings or Home Assistant when armed. Map view: gr
 - **5c – Household enrolment:** collect BLE IRKs (ESPresense/Bermuda method) or install the companion-app beacon on each person's phone.
 - **5d – Integrate:** armed mode from SmartThings/HA; alert only on red + motion/door/camera event; links to clips.
 - **5e – Deploy outdoor nodes** for the zones that passed 5a.
+
+---
+
+## 8. Scope decision (owner, after review): ranch-scale "red dot" layer
+
+**Owner's requirements:** the property is a large ranch, already covered by cameras and security drones.
+The RF layer only needs to say **"unknown device detected here, now"** as a red dot. It's one input that tells
+the cameras and drones where to look, not a source of identity. No stranger details needed.
+
+This makes the job much simpler: §7.3 clustering and fine-grained tracking become nice-to-haves.
+
+### 8.1 Design changes for a ranch
+- **Put sensors where the cameras are.** Camera poles already have power, network and a view, so a red dot at sensor X
+  maps directly to "look at camera X". Add stand-alone nodes only at **chokepoints**: gates, driveways, fence gaps, barns,
+  equipment yards, the house perimeter. Don't try to blanket open pasture.
+- **Location = zone of the strongest sensor**, not trilateration. Triangulate only where sensors overlap (house, yards).
+  Red dot = the hearing sensor's position with a range circle, which is enough to aim a PTZ camera or send a drone.
+- **Range is limited by the phone's weak transmitter.** A better receiver antenna helps, but plan for roughly
+  50–150 m for Wi-Fi probes and 20–60 m for BLE in open terrain. Directional antennas along fence lines and roads stretch this. Measure in 5a.
+- **Backhaul and power:** use MikroTik for the long point-to-point radio links and PoE. Remote nodes run on solar:
+  ESP32 (about 1 W, BLE + 2.4 GHz) or Pi + adapter (about 4–6 W, Wi-Fi + BLE via Kismet).
+- **Simplified red logic:** red = not enrolled AND signal above the per-sensor threshold AND not on the baseline list.
+  Amber = weak or one-off. Ranch hands, contractors and regular vendors get **enrolled** (green or a "staff" colour),
+  otherwise they're daily red noise. A week of baseline learning absorbs fixed devices (neighbours, equipment, gate controllers).
+- **Bonus signals the same sensors pick up (verify in 5a):**
+  - **Vehicles:** many cars broadcast Bluetooth or in-car Wi-Fi hotspots, so an unknown vehicle at a gate shows up as red too.
+  - **Other people's drones:** since 2024 the FAA requires drones to broadcast Remote ID over Wi-Fi/BLE, including the
+    drone's position and the **pilot's position**. It's designed to be received by the public. Open-source receivers exist
+    (OpenDroneID; Kismet reportedly supports it). Plot these as a distinct marker, and whitelist your own drones.
+
+### 8.2 Integration with existing tools (what the red dot drives)
+1. **Alert:** push/SMS, "Unknown device – North gate – 14:32", with a map link. Debounce so one person makes one alert.
+2. **Cameras:** each sensor maps to camera(s) or a PTZ preset. On red, bookmark that footage window and, if the video
+   system supports it (ONVIF PTZ preset / VMS API), swing the PTZ to the zone.
+3. **Drones:** send the red dot's coordinates to the drone platform as a waypoint. This is automatic only if the platform has an API
+   (dock-based systems often do); otherwise the operator gets coordinates to paste.
+4. **Map:** web map plus a live Google Earth layer. The ranch scale suits satellite imagery. Add property boundary, zones and sensor locations.
+5. **Log/report:** every red/amber event with zone, time, sensors and camera links; daily summary.
+
+### 8.3 Info the next session needs from the owner
+- Acreage and a property boundary (a KML/KMZ from Google Earth is ideal), plus the locations of camera poles, gates and buildings.
+- What's at each camera pole: power (mains/solar/PoE)? network (fibre, MikroTik wireless link)?
+- Camera system / VMS (e.g. Blue Iris, Frigate, Milestone, UniFi Protect, Hikvision) and whether it has PTZ.
+- Drone platform (e.g. DJI Dock + FlightHub 2, Skydio) and whether it has an API.
+- How many staff and regular vendors need enrolling; alert channel (SMS, app, radio dispatch).
+
+### 8.4 Revised phases
+- **5a Field test (unchanged, now at a gate + one camera pole):** detection rate and range for locked phones,
+  one vehicle, and a drone with Remote ID. Go/no-go as in §7.6.
+- **5b Software:** Kismet + ESP32 sources, zone model, red/amber/green + enrolment, baseline learning, alerts, event log,
+  sensor→camera mapping, Remote ID markers, property/zone overlay, Google Earth layer.
+- **5c Integrations:** VMS bookmark/PTZ, drone waypoint hand-off (per platform API), SmartThings/HA armed mode.
+- **5d Roll out:** camera poles first, then chokepoints, then gaps found during 5a.
