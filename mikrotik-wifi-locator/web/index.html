@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Wi-Fi Locator</title>
+<link rel="stylesheet" href="/vendor/leaflet/leaflet.css">
+<script src="/vendor/leaflet/leaflet.js"></script>
+<style>
+  :root { --bg:#ffffff; --fg:#111827; --muted:#6b7280; --line:#e5e7eb; --card:#f9fafb; --accent:#2563eb; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111418; --fg:#e5e7eb; --muted:#9ca3af; --line:#2a2f36; --card:#181c21; --accent:#60a5fa; }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin:0; height:100%; background:var(--bg); color:var(--fg);
+    font: 14px/1.4 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  #app { display:flex; height:100%; }
+  #map { flex:1; }
+  aside { width:320px; border-left:1px solid var(--line); display:flex; flex-direction:column; }
+  header { padding:14px 16px; border-bottom:1px solid var(--line); }
+  header h1 { margin:0; font-size:16px; }
+  header .sub { color:var(--muted); font-size:12px; margin-top:2px; }
+  .controls { display:flex; gap:12px; padding:10px 16px; border-bottom:1px solid var(--line);
+    font-size:13px; flex-wrap:wrap; }
+  .controls a { color:var(--accent); text-decoration:none; }
+  #list { overflow:auto; flex:1; }
+  .dev { display:flex; gap:10px; padding:10px 16px; border-bottom:1px solid var(--line); cursor:pointer; }
+  .dev:hover { background:var(--card); }
+  .dot { width:12px; height:12px; border-radius:50%; margin-top:4px; flex:none; }
+  .dev .name { font-weight:600; }
+  .dev .meta { color:var(--muted); font-size:12px; }
+  .dev.stale { opacity:.5; }
+  .banner { margin:10px 16px; padding:8px 10px; border-radius:6px; font-size:12px;
+    background:#fef3c7; color:#78350f; }
+  .empty { padding:24px 16px; color:var(--muted); }
+  .lbl { background:rgba(17,24,39,.8); color:#fff; border:none; border-radius:4px;
+    padding:1px 6px; font-size:12px; box-shadow:none; }
+  .lbl::before { display:none; }
+  @media (max-width: 720px) {
+    #app { flex-direction:column; }
+    aside { width:100%; height:40%; border-left:none; border-top:1px solid var(--line); }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="map"></div>
+  <aside>
+    <header>
+      <h1>Wi-Fi Locator</h1>
+      <div class="sub" id="status">Connecting…</div>
+    </header>
+    <div class="controls">
+      <label><input type="checkbox" id="trails"> Trails</label>
+      <label><input type="checkbox" id="circles" checked> Accuracy</label>
+      <label><input type="checkbox" id="knownOnly"> Known only</label>
+      <a href="/networklink.kml">Open in Google Earth</a>
+    </div>
+    <div id="banners"></div>
+    <div id="list"></div>
+  </aside>
+</div>
+<script>
+const PALETTE = ["#2563eb","#dc2626","#16a34a","#d97706","#9333ea","#0891b2","#db2777","#65a30d"];
+const colorFor = d => d.color || PALETTE[parseInt(d.mac.replace(/:/g,""),16) % PALETTE.length];
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ago = s => s < 60 ? `${s}s ago` : s < 3600 ? `${Math.round(s/60)}m ago` : `${Math.round(s/3600)}h ago`;
+
+const map = L.map("map", { maxZoom: 23, zoomControl: true });
+const layers = {
+  "Satellite": L.tileLayer("https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    { maxNativeZoom: 19, maxZoom: 23, attribution: "Imagery © Esri" }),
+  "Streets": L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png",
+    { maxNativeZoom: 19, maxZoom: 23, attribution: "© OpenStreetMap contributors" }),
+  "Blank (floor plan only)": L.layerGroup(),
+};
+const overlays = {};
+const apLayer = L.layerGroup().addTo(map);
+const devLayer = L.layerGroup().addTo(map);
+const markers = {};   // mac -> {marker, circle, trail}
+let firstFit = true, selected = null, lastState = null;
+
+// Click anywhere to get coordinates - handy for placing APs in config.toml.
+map.on("click", e => {
+  if (e.originalEvent.target.closest(".leaflet-interactive")) return;
+  L.popup().setLatLng(e.latlng).setContent(
+    `<code>lat = ${e.latlng.lat.toFixed(7)}<br>lon = ${e.latlng.lng.toFixed(7)}</code>`).openOn(map);
+});
+
+async function init() {
+  const cfg = await (await fetch("/api/config")).json();
+  const m = cfg.map || {};
+  (layers[m.base === "streets" ? "Streets" : m.base === "blank" ? "Blank (floor plan only)" : "Satellite"]).addTo(map);
+  if (m.floorplan && m.floorplan.bounds) {
+    overlays["Floor plan"] = L.imageOverlay(m.floorplan.url, m.floorplan.bounds,
+      { opacity: m.floorplan.opacity ?? 0.7 }).addTo(map);
+  }
+  overlays["Access points"] = apLayer;
+  overlays["Devices"] = devLayer;
+  L.control.layers(layers, overlays).addTo(map);
+  if (m.center) map.setView(m.center, m.zoom || 20);
+  ["trails","circles","knownOnly"].forEach(id => document.getElementById(id).onchange = () => lastState && render(lastState));
+  tick();
+  setInterval(tick, Math.max(1, cfg.poll_seconds || 3) * 1000);
+}
+
+async function tick() {
+  try {
+    const s = await (await fetch("/api/state")).json();
+    lastState = s;
+    render(s);
+  } catch (e) {
+    document.getElementById("status").textContent = "Lost connection to server – retrying…";
+  }
+}
+
+function render(s) {
+  const showTrails = document.getElementById("trails").checked;
+  const showCircles = document.getElementById("circles").checked;
+  const knownOnly = document.getElementById("knownOnly").checked;
+  const devs = s.devices.filter(d => !knownOnly || d.known);
+
+  // Access points
+  apLayer.clearLayers();
+  s.aps.forEach(ap => L.circleMarker([ap.lat, ap.lon], { radius: 6, color: "#111827", weight: 2,
+      fillColor: "#fbbf24", fillOpacity: 1 })
+    .bindTooltip(`AP: ${esc(ap.name)}`, { direction: "top" }).addTo(apLayer));
+
+  // Devices (update in place so markers glide instead of flicker)
+  const seen = new Set();
+  devs.forEach(d => {
+    seen.add(d.mac);
+    const c = colorFor(d), ll = [d.lat, d.lon];
+    let m = markers[d.mac];
+    if (!m) {
+      m = markers[d.mac] = {
+        circle: L.circle(ll, { radius: d.accuracy_m, color: c, weight: 1, fillOpacity: .12, interactive: false }),
+        trail: L.polyline([], { color: c, weight: 2, opacity: .6, dashArray: "4 4", interactive: false }),
+        marker: L.circleMarker(ll, { radius: 8, color: "#fff", weight: 2, fillColor: c, fillOpacity: 1 })
+          .bindTooltip("", { permanent: true, direction: "right", offset: [10, 0], className: "lbl" })
+          .bindPopup(""),
+      };
+      m.marker.on("click", () => { selected = d.mac; render(lastState); });
+    }
+    m.marker.setLatLng(ll).setTooltipContent(esc(d.name));
+    m.marker.setPopupContent(
+      `<b>${esc(d.name)}</b>${d.owner ? " · " + esc(d.owner) : ""}<br>` +
+      `<small>${d.mac}</small><br>Near <b>${esc(d.nearest_ap)}</b> (${d.rssi} dBm)<br>` +
+      `±${d.accuracy_m} m · floor ${d.floor} · ${ago(d.age_s)}<br>` +
+      `<small>Heard by: ${Object.entries(d.aps_heard).map(([k,v]) => `${esc(k)} ${v}`).join(", ")}</small>`);
+    m.circle.setLatLng(ll).setRadius(d.accuracy_m);
+    m.trail.setLatLngs(d.trail);
+    toggle(m.circle, showCircles); toggle(m.trail, showTrails); toggle(m.marker, true);
+  });
+  Object.keys(markers).forEach(mac => {
+    if (!seen.has(mac)) { ["circle","trail","marker"].forEach(k => devLayer.removeLayer(markers[mac][k])); delete markers[mac]; }
+  });
+
+  if (firstFit && (s.aps.length || devs.length) && !map._loaded) {
+    map.fitBounds(L.latLngBounds(s.aps.map(a => [a.lat, a.lon]).concat(devs.map(d => [d.lat, d.lon]))).pad(0.4));
+  }
+  firstFit = false;
+  if (selected && markers[selected]) { map.panTo(markers[selected].marker.getLatLng()); markers[selected].marker.openPopup(); selected = null; }
+
+  // Sidebar
+  document.getElementById("status").textContent =
+    `${devs.length} device${devs.length === 1 ? "" : "s"} · ${s.aps.length} APs · updated ${new Date(s.updated*1000).toLocaleTimeString()}`;
+  const banners = [];
+  Object.entries(s.errors || {}).forEach(([r, e]) => banners.push(`Router <b>${esc(r)}</b>: ${esc(e)}`));
+  if (s.unmapped_interfaces?.length) banners.push(
+    `Clients seen on radios not assigned to any AP in config.toml: <b>${s.unmapped_interfaces.map(esc).join(", ")}</b>`);
+  document.getElementById("banners").innerHTML = banners.map(b => `<div class="banner">${b}</div>`).join("");
+  document.getElementById("list").innerHTML = devs.length ? devs.map(d => `
+    <div class="dev ${d.age_s > 60 ? "stale" : ""}" data-mac="${d.mac}">
+      <span class="dot" style="background:${colorFor(d)}"></span>
+      <div><div class="name">${esc(d.name)}</div>
+      <div class="meta">near ${esc(d.nearest_ap)} · ${d.rssi} dBm · ±${d.accuracy_m} m · ${ago(d.age_s)}</div></div>
+    </div>`).join("") : `<div class="empty">No Wi-Fi clients seen yet.</div>`;
+  document.querySelectorAll(".dev").forEach(el => el.onclick = () => { selected = el.dataset.mac; render(lastState); });
+}
+
+function toggle(layer, on) {
+  if (on && !devLayer.hasLayer(layer)) devLayer.addLayer(layer);
+  if (!on && devLayer.hasLayer(layer)) devLayer.removeLayer(layer);
+}
+
+init();
+</script>
+</body>
+</html>
