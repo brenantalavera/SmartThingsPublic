@@ -6,8 +6,9 @@ Method
        d = 10 ** ((RSSI_1m - RSSI) / (10 * n))
 2. Readings older than ``window_seconds`` are discarded.
 3. One AP heard the device  -> it is "near that AP", radius = d.
-   Two APs                  -> weighted centroid (weights 1/d^2).
-   Three or more            -> least-squares trilateration seeded by the centroid.
+   Two or more              -> weighted centroid (weights 1/d^2). Optional
+                               least-squares trilateration (method="trilaterate")
+                               tested worse with real-world-like noise and walls.
 4. The result is smoothed with an exponential moving average.
 
 All maths is done in a local flat metre grid centred on the APs, which is
@@ -49,7 +50,8 @@ def rssi_to_distance(rssi: float, rssi_at_1m: float, n: float) -> float:
     return min(max(d, MIN_DIST_M), MAX_DIST_M)
 
 
-def trilaterate(points: list[tuple[float, float, float]], iterations: int = 20):
+def trilaterate(points: list[tuple[float, float, float]], iterations: int = 20,
+                centroid_only: bool = False):
     """Least-squares fit of (x, y) to circles [(x_i, y_i, r_i), ...].
 
     Gauss-Newton on residuals |p - c_i| - r_i, weighted by 1/r_i so that
@@ -59,10 +61,17 @@ def trilaterate(points: list[tuple[float, float, float]], iterations: int = 20):
     sw = sum(w)
     x = sum(wi * px for wi, (px, _, _) in zip(w, points)) / sw
     y = sum(wi * py for wi, (_, py, _) in zip(w, points)) / sw
-    if len(points) < 3:
+    if len(points) < 3 or centroid_only:
         return x, y
+
+    def cost(cx, cy):
+        return sum((math.hypot(cx - px, cy - py) - r) ** 2 / r for px, py, r in points)
+
+    # Levenberg-Marquardt: damped Gauss-Newton that only accepts steps which
+    # reduce the error, so noisy / inconsistent circles can't blow it up.
+    lam, c = 1.0, cost(x, y)
     for _ in range(iterations):
-        jtj = [[0.0, 0.0], [0.0, 0.0]]
+        jtj = [[lam, 0.0], [0.0, lam]]
         jtr = [0.0, 0.0]
         for px, py, r in points:
             dx, dy = x - px, y - py
@@ -76,13 +85,24 @@ def trilaterate(points: list[tuple[float, float, float]], iterations: int = 20):
             jtr[0] += wt * jx * res
             jtr[1] += wt * jy * res
         det = jtj[0][0] * jtj[1][1] - jtj[0][1] ** 2
-        if abs(det) < 1e-9:
-            break
         sx = (jtj[1][1] * jtr[0] - jtj[0][1] * jtr[1]) / det
         sy = (jtj[0][0] * jtr[1] - jtj[0][1] * jtr[0]) / det
-        x, y = x - sx, y - sy
-        if math.hypot(sx, sy) < 0.01:
-            break
+        step = math.hypot(sx, sy)
+        if step > 3.0:  # never jump more than 3 m per iteration
+            sx, sy = sx * 3.0 / step, sy * 3.0 / step
+        nc = cost(x - sx, y - sy)
+        if nc < c:
+            x, y, c, lam = x - sx, y - sy, nc, lam * 0.3
+            if step < 0.01:
+                break
+        else:
+            lam *= 10
+            if lam > 1e6:
+                break
+    # Keep the answer inside the area the APs can plausibly cover.
+    pad = min(r for *_, r in points)
+    x = min(max(x, min(p[0] for p in points) - pad), max(p[0] for p in points) + pad)
+    y = min(max(y, min(p[1] for p in points) - pad), max(p[1] for p in points) + pad)
     return x, y
 
 
@@ -156,7 +176,7 @@ class Locator:
             jx, jy = _jitter(t.mac, min(2.0, d / 3))
             x, y, acc = ax + jx, ay + jy, d
         else:
-            x, y = trilaterate(pts)
+            x, y = trilaterate(pts, centroid_only=self.cfg.method != "trilaterate")
             resid = [abs(math.hypot(x - px, y - py) - r) for px, py, r in pts]
             acc = max(1.0, math.sqrt(sum(e * e for e in resid) / len(resid)) +
                       min(r for *_, r in pts) / 2)

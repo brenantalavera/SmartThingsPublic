@@ -43,6 +43,7 @@ class Config:
     rssi_at_1m: float = -40.0
     path_loss_exponent: float = 3.0
     smoothing: float = 0.4
+    method: str = "centroid"  # "centroid" or "trilaterate"
     track: str = "all"  # "all" or "known"
     host: str = "0.0.0.0"
     port: int = 8080
@@ -94,6 +95,7 @@ def load(path: str | Path) -> Config:
         rssi_at_1m=pos.get("rssi_at_1m", -40.0),
         path_loss_exponent=pos.get("path_loss_exponent", 3.0),
         smoothing=pos.get("smoothing", 0.4),
+        method=pos.get("method", "centroid"),
         track=pos.get("track", "all"),
         host=srv.get("host", "0.0.0.0"),
         port=srv.get("port", 8080),

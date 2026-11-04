@@ -34,6 +34,17 @@ class Maths(unittest.TestCase):
         self.assertAlmostEqual(y, 4.0, places=2)
 
 
+    def test_trilaterate_noisy_never_diverges(self):
+        import random
+        rnd = random.Random(0)
+        aps = [(3, 3), (9, 9), (15, 3), (3, 9), (15, 9), (9, 3)]
+        for _ in range(2000):
+            k = rnd.randint(3, 6)
+            pts = [(x, y, rnd.uniform(0.5, 40)) for x, y in rnd.sample(aps, k)]
+            x, y = trilaterate(pts)
+            self.assertTrue(-40 < x < 60 and -40 < y < 50, (pts, x, y))
+
+
 class Pipeline(unittest.TestCase):
     def setUp(self):
         self.cfg = config_mod.load(EXAMPLE)

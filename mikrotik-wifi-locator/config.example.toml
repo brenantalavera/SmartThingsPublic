@@ -80,6 +80,7 @@ stale_seconds = 300        # hide devices not seen for this long
 rssi_at_1m = -40           # calibrate: stand 1 m from an AP and read the signal
 path_loss_exponent = 3.0   # 2 = open space, 3 = typical house, 4 = thick walls
 smoothing = 0.4            # 0..1, lower = smoother but slower to react
+method = "centroid"        # or "trilaterate" (tested less accurate indoors)
 track = "all"              # "all" or "known" (only [[devices]] above)
 
 [server]

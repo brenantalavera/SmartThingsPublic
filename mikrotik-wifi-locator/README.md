@@ -25,9 +25,10 @@ You get **room or zone accuracy**, and it depends almost entirely on how many AP
   1 AP per room you get "which room".
 * When a device roams between APs, the readings from both APs are combined for
   `window_seconds`, which gives in-between positions.
-* For real trilateration (2–5 m), add cheap **extra listeners**: for example, ESP32 boards
-  that sniff probe requests and `POST` to `/api/observations` (see below). Every listener
-  that hears a device at the same moment helps narrow down its position.
+* For better accuracy, add **extra listeners** that `POST` to `/api/observations` (see below).
+  Simulated, this gives about 2 m median error and the right room about 70% of the time.
+  Building them is non-trivial: see [PLAN.md](PLAN.md) risks R1/R2 (5 GHz, BLE alternative).
+  [PLAN.md](PLAN.md) also has the full feasibility study and test results.
 
 ## Setup
 

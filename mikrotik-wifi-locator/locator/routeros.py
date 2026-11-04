@@ -15,6 +15,7 @@ Every wireless stack RouterOS has shipped is handled:
 from __future__ import annotations
 
 import base64
+import functools
 import json
 import re
 import ssl
@@ -113,7 +114,7 @@ class ApiClient:
             if not verify_tls:
                 ctx.check_hostname = False
                 ctx.verify_mode = ssl.CERT_NONE
-            kwargs["ssl_wrapper"] = ctx.wrap_socket
+            kwargs["ssl_wrapper"] = functools.partial(ctx.wrap_socket, server_hostname=host)
             kwargs["port"] = port or 8729
         else:
             kwargs["port"] = port or 8728
