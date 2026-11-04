@@ -245,3 +245,69 @@ This makes the job much simpler: §7.3 clustering and fine-grained tracking beco
   sensor→camera mapping, Remote ID markers, property/zone overlay, Google Earth layer.
 - **5c Integrations:** VMS bookmark/PTZ, drone waypoint hand-off (per platform API), SmartThings/HA armed mode.
 - **5d Roll out:** camera poles first, then chokepoints, then gaps found during 5a.
+
+---
+
+## 9. Roles, zones and rules (owner's use cases)
+
+Owner's use cases:
+- When a **crew member arrives** at the main arrival point/gate, the cameras should "stand down" (no alarm).
+- At the **delivery building**, know when **UPS / FedEx** arrive. Some drivers join the ranch Wi-Fi (allowed), so their
+  MACs can be registered and labelled.
+
+### 9.1 Device roles (replaces plain green/red)
+| Role | Colour | How a device gets it | Default behaviour |
+|---|---|---|---|
+| Crew / family | green | Registered: Wi-Fi MAC (from the MikroTik DHCP lease), BLE IRK, or companion-app beacon | Log arrival/departure, no alarm |
+| Delivery – UPS / FedEx / other | blue | Driver phone MAC registered after it joins the Wi-Fi (label it in the DHCP lease comment, e.g. `UPS – route 12`) | Notify "UPS arrived at delivery building 10:42"; log the departure time |
+| Visitor (expected) | purple | Temporary registration with an expiry (guest Wi-Fi lease, or added for N days) | Notify, no alarm |
+| Unknown | amber or red | Anything not registered | Depends on zone and time (9.2) |
+| Our drones / vehicles | grey | Registered Remote ID serials and vehicle Bluetooth/Wi-Fi | Hidden or shown dim |
+
+Getting MACs is easy: anyone who joins the Wi-Fi shows up in the MikroTik DHCP leases. Label the lease with a comment and the
+locator picks up the name automatically (already implemented). Phones use a **fixed private MAC per network** (iOS 18+ on
+WPA2/3, Android persistent randomization), so a driver's MAC stays the same on later visits. It changes only if they "forget"
+the network or reset the phone; then it gets re-registered on their next connection.
+
+### 9.2 Rules: zone × time × role
+Example (config sketch for the next session):
+```toml
+[[zones]]  name = "Main gate";          sensors = ["gate-n"]
+[[zones]]  name = "Delivery building";  sensors = ["dlv-1"]
+[[zones]]  name = "House";              sensors = ["house-*"]
+
+[[rules]]  zone = "Delivery building"; hours = "07:00-20:00"; unknown = "amber"   # likely a driver who didn't join Wi-Fi
+[[rules]]  zone = "Delivery building"; hours = "20:00-07:00"; unknown = "red"
+[[rules]]  zone = "*";                 role = "delivery";     action = "notify"
+[[rules]]  zone = "House";             unknown = "red"                           # always
+[[rules]]  zone = "*";                 role = "crew";         action = "log"     # and stand-down, see 9.3
+```
+Red → full response (alerts, camera bookmark/PTZ, drone waypoint). Amber → shown and logged, no alarm. Blue/green → log/notify only.
+
+### 9.3 "Stand down": do it safely
+A phone's Wi-Fi/BLE address is **broadcast in the clear and is easy to copy (spoof)**, and a recognised phone only proves the
+*phone* is there, not who is carrying it or who is riding with them. If a recognised device fully disabled security, anyone
+who copied a crew MAC could switch the cameras off. So:
+- **Stand-down = suppress the alarm/notification, never stop recording.** Cameras keep recording and the event is still logged.
+- **Don't stand down if an unknown (red) device is in the same zone at the same time.** Crew truck + stranger = still red.
+- Optionally limit stand-down to shift hours, and keep night/armed mode as "alarm on anything unknown, notify on crew".
+- Stronger crew identity (later, if wanted): BLE IRK or the companion-app beacon, which are much harder to fake than a Wi-Fi MAC; or an ANPR/LPR camera at the gate.
+
+### 9.4 Delivery trucks whose drivers don't join the Wi-Fi
+In priority order:
+1. **Zone + hours:** unknown at the delivery building during business hours = amber "probable delivery/visitor". Covers most cases with zero extra work.
+2. **Carrier notifications:** UPS My Choice / FedEx Delivery Manager emails or alerts can mark "delivery expected today", raising confidence for amber at the delivery building.
+3. **Vendor prefix hint (verify in field test 5a):** carriers' handheld scanners are enterprise devices (Zebra, Honeywell, etc.). If they broadcast their real MAC, the
+   manufacturer prefix (OUI) can label them "probable carrier scanner". Untested; managed Android devices may randomize.
+4. **Camera:** truck livery or plate recognition at the delivery building, if the video system supports it, is the most reliable signal.
+
+### 9.5 Logs and reports this enables
+- Crew arrival/departure times per person (a timesheet-style log). **Workplace note:** several US states (e.g. NY, CT, DE)
+  require written notice to employees about electronic monitoring. Tell the crew in writing; it's simple and avoids problems.
+- Delivery log: carrier, arrival, departure, dwell time.
+- Security log: red/amber events with zone, time and camera links.
+
+### 9.6 Changes to the phases
+- 5a field test adds: a crew phone (iPhone and Android) arriving at the main gate, a delivery truck at the delivery building, and whether its scanner is visible (9.4.3).
+- 5b software adds: roles, zones, the rules engine, safe stand-down logic (9.3), arrival/departure and delivery logs, guest expiry.
+- Owner to confirm: the names and locations of the arrival point ("90"?) and the delivery building, shift hours, carriers, and the alert recipients for each role.
