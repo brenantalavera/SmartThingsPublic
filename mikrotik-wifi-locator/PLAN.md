@@ -251,8 +251,8 @@ This makes the job much simpler: §7.3 clustering and fine-grained tracking beco
 ## 9. Roles, zones and rules (owner's use cases)
 
 Owner's use cases:
-- When a **crew member arrives** at the main arrival point/gate, the cameras should "stand down" (no alarm).
-- At the **delivery building**, know when **UPS / FedEx** arrive. Some drivers join the ranch Wi-Fi (allowed), so their
+- **Building 90 is the package delivery building.** When a **crew member arrives** there, the cameras should "stand down" (no alarm).
+- At Building 90, know when **UPS / FedEx** arrive. Some drivers join the ranch Wi-Fi (allowed), so their
   MACs can be registered and labelled.
 
 ### 9.1 Device roles (replaces plain green/red)
@@ -272,15 +272,16 @@ the network or reset the phone; then it gets re-registered on their next connect
 ### 9.2 Rules: zone × time × role
 Example (config sketch for the next session):
 ```toml
-[[zones]]  name = "Main gate";          sensors = ["gate-n"]
-[[zones]]  name = "Delivery building";  sensors = ["dlv-1"]
+[[zones]]  name = "Building 90";        sensors = ["b90-*"]     # package delivery building
+[[zones]]  name = "Main gate";          sensors = ["gate-n"]    # example, if gates get sensors
 [[zones]]  name = "House";              sensors = ["house-*"]
 
-[[rules]]  zone = "Delivery building"; hours = "07:00-20:00"; unknown = "amber"   # likely a driver who didn't join Wi-Fi
-[[rules]]  zone = "Delivery building"; hours = "20:00-07:00"; unknown = "red"
+[[rules]]  zone = "Building 90"; hours = "07:00-20:00"; unknown = "amber"   # likely a driver who didn't join Wi-Fi
+[[rules]]  zone = "Building 90"; hours = "20:00-07:00"; unknown = "red"
 [[rules]]  zone = "*";                 role = "delivery";     action = "notify"
 [[rules]]  zone = "House";             unknown = "red"                           # always
-[[rules]]  zone = "*";                 role = "crew";         action = "log"     # and stand-down, see 9.3
+[[rules]]  zone = "Building 90";       role = "crew";         action = "stand_down"  # see 9.3
+[[rules]]  zone = "*";                 role = "crew";         action = "log"
 ```
 Red → full response (alerts, camera bookmark/PTZ, drone waypoint). Amber → shown and logged, no alarm. Blue/green → log/notify only.
 
@@ -295,11 +296,11 @@ who copied a crew MAC could switch the cameras off. So:
 
 ### 9.4 Delivery trucks whose drivers don't join the Wi-Fi
 In priority order:
-1. **Zone + hours:** unknown at the delivery building during business hours = amber "probable delivery/visitor". Covers most cases with zero extra work.
-2. **Carrier notifications:** UPS My Choice / FedEx Delivery Manager emails or alerts can mark "delivery expected today", raising confidence for amber at the delivery building.
+1. **Zone + hours:** unknown at Building 90 during business hours = amber "probable delivery/visitor". Covers most cases with zero extra work.
+2. **Carrier notifications:** UPS My Choice / FedEx Delivery Manager emails or alerts can mark "delivery expected today", raising confidence for amber at Building 90.
 3. **Vendor prefix hint (verify in field test 5a):** carriers' handheld scanners are enterprise devices (Zebra, Honeywell, etc.). If they broadcast their real MAC, the
    manufacturer prefix (OUI) can label them "probable carrier scanner". Untested; managed Android devices may randomize.
-4. **Camera:** truck livery or plate recognition at the delivery building, if the video system supports it, is the most reliable signal.
+4. **Camera:** truck livery or plate recognition at Building 90, if the video system supports it, is the most reliable signal.
 
 ### 9.5 Logs and reports this enables
 - Crew arrival/departure times per person (a timesheet-style log). **Workplace note:** several US states (e.g. NY, CT, DE)
@@ -308,6 +309,7 @@ In priority order:
 - Security log: red/amber events with zone, time and camera links.
 
 ### 9.6 Changes to the phases
-- 5a field test adds: a crew phone (iPhone and Android) arriving at the main gate, a delivery truck at the delivery building, and whether its scanner is visible (9.4.3).
+- 5a field test adds: a crew phone (iPhone and Android) arriving at Building 90, a UPS/FedEx truck at Building 90, and whether its scanner is visible (9.4.3).
 - 5b software adds: roles, zones, the rules engine, safe stand-down logic (9.3), arrival/departure and delivery logs, guest expiry.
-- Owner to confirm: the names and locations of the arrival point ("90"?) and the delivery building, shift hours, carriers, and the alert recipients for each role.
+- Confirmed by owner: **"90" = Building 90, the package delivery building**. Both use cases (crew stand-down, UPS/FedEx arrivals) apply there.
+- Still to confirm: Building 90's location on the map, whether it has power/network and a camera for the sensor, shift hours, carriers, and the alert recipients for each role.
