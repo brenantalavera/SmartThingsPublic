@@ -329,3 +329,38 @@ In priority order:
 (2) Lab test: one spare MikroTik as a dedicated Wi-Fi sniffer streaming to a small Linux box, plus (optionally) one KNOT for BLE.
 Compare against a Raspberry Pi + Kismet. Choose whichever detects locked phones best per dollar, then standardise.
 Sources: help.mikrotik.com IoT/Bluetooth docs (KNOT scanner), manual.mikrotik.com wireless sniffer, MikroTik forum threads on probe-request sniffing.
+
+---
+
+## 11. Scale: hundreds of MikroTik devices across the ranch (owner confirmed)
+
+**What this changes**
+- **Connected-device tracking already covers the whole ranch.** Every MikroTik AP is a "sensor" for anything on the Wi-Fi.
+  With hundreds of APs, "which AP" becomes a fine-grained zone, so crew, drivers and staff can be shown ranch-wide with no new hardware.
+- **Likely spare radios for sniffing.** In a fleet this size, some dual-band APs have a band that isn't needed at their location
+  (e.g. perimeter or camera-pole APs), and there are probably spare units in stock. These can become dedicated sniffers (§10)
+  without buying new hardware. **Never touch radios that carry point-to-point backhaul links.**
+- Detection density for the red layer could come mostly from existing gear, with Pis/Kismet or KNOTs only where gaps remain.
+
+**Gaps in the current prototype at this scale (must fix in Phase 1)**
+1. **Polling is sequential.** One unreachable router (5 s timeout) delays every other router. Needs concurrent polling (thread pool/asyncio),
+   per-router intervals and back-off for offline devices. If they use **CAPsMAN**, poll the controller(s) instead of each AP.
+2. **Config by hand won't scale.** Hundreds of `[[aps]]` entries need importing:
+   - from a **KML/KMZ** (drop a pin per AP in Google Earth, named by RouterOS identity);
+   - from **The Dude** maps if they use it;
+   - from devices with GPS (`/system/gps`, e.g. LtAP models);
+   - or a CSV. Match on `/system identity` or serial number.
+3. **UI at ranch scale:** clustering markers when zoomed out, a zone list, filter by role, and sensor health (an offline AP = a blind spot, show it on the map).
+4. **Load:** measured at 5 ms per poll for 300 clients. Should be fine, but re-measure with the real client count and drop trails from `/api/state` by default.
+
+**Step 0 (new, before anything else): automatic inventory, read-only**
+A script using the same read-only user that walks all devices (or uses `/ip neighbor` from the core) and records:
+model (`/system routerboard`), RouterOS version, wireless package (`wifi` / `wifiwave2` / legacy `wireless` / CAPsMAN),
+radios and bands, whether each radio carries clients or backhaul, sniffer capability, GPS, Bluetooth (KNOT), PoE, uptime and identity.
+Output: a CSV/KML of the fleet. This decides which units can be sniffers, where the gaps are, and the RouterOS upgrade needs.
+It's low-risk (read-only) and gives the next session real data instead of assumptions.
+
+**Questions for the owner**
+- CAPsMAN (one or several controllers) or standalone APs? Is The Dude in use?
+- RouterOS versions in the fleet (any still on v6?) and roughly which models.
+- Is there a management VLAN the locator server can reach every device on?
