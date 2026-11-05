@@ -1,0 +1,104 @@
+# Copy to config.toml and edit.  Coordinates: open the web map, click a spot,
+# and it shows the lat/lon to paste here.
+
+# ---------------------------------------------------------------------------
+# Routers to poll. With CAPsMAN you only need the controller; without it, list
+# every MikroTik AP separately.
+# ---------------------------------------------------------------------------
+[[routers]]
+name     = "main"            # referenced by [[aps]] below
+host     = "192.168.88.1"
+username = "locator"         # read-only user, see routeros-setup.rsc
+password = "change-me"
+mode     = "rest"            # "rest" (RouterOS 7, no extra deps) or "api" (v6/v7, pip install librouteros)
+https    = true              # REST over www-ssl; set false to use plain http (www service)
+verify_tls = false           # RouterOS usually has a self-signed certificate
+# port   = 443
+# tables = "auto"            # or e.g. ["interface/wifi/registration-table"]
+
+# [[routers]]
+# name = "garage-ap"
+# host = "192.168.88.3"
+# username = "locator"
+# password = "change-me"
+
+# ---------------------------------------------------------------------------
+# Physical AP locations. `interfaces` = the radio interface names as they appear
+# in the registration table (shell-style wildcards allowed). Both bands of one
+# AP go in the same entry. Run `python -m locator --once` to list what's seen.
+# ---------------------------------------------------------------------------
+[[aps]]
+name = "Living room"
+router = "main"
+interfaces = ["wifi1", "wifi2"]
+lat = 39.7392150
+lon = -104.9902800
+floor = 0
+
+[[aps]]
+name = "Bedroom"
+router = "main"
+interfaces = ["cap-wifi1", "cap-wifi2"]     # CAPsMAN-managed radios
+lat = 39.7393050
+lon = -104.9901350
+floor = 0
+
+[[aps]]
+name = "Garage"
+router = "main"
+interfaces = ["cap-wifi3", "cap-wifi4"]
+lat = 39.7391300
+lon = -104.9900900
+floor = 0
+# rssi_at_1m = -38            # per-AP calibration overrides
+# path_loss_exponent = 2.7
+
+# Optional extra sensors (e.g. ESP32 sniffers) that POST to /api/observations
+# with header X-Sensor-Token. They add more "ears", which improves accuracy a lot.
+# [[aps]]
+# name = "Hallway sensor"
+# sensor = "esp-hall"
+# lat = 39.7392500
+# lon = -104.9901800
+
+# ---------------------------------------------------------------------------
+# Name the devices you care about. Unlisted devices fall back to the DHCP
+# lease comment / hostname. Phones use a private MAC per network: read it from
+# the phone's Wi-Fi details screen, or from the DHCP lease list.
+# ---------------------------------------------------------------------------
+[[devices]]
+mac = "12:34:56:78:9A:BC"
+name = "Brenan's phone"
+owner = "Brenan"
+color = "#2563eb"
+
+# ---------------------------------------------------------------------------
+[positioning]
+poll_seconds = 3
+window_seconds = 20        # how long a reading from an AP stays valid
+stale_seconds = 300        # hide devices not seen for this long
+rssi_at_1m = -40           # calibrate: stand 1 m from an AP and read the signal
+path_loss_exponent = 3.0   # 2 = open space, 3 = typical house, 4 = thick walls
+smoothing = 0.4            # 0..1, lower = smoother but slower to react
+method = "centroid"        # or "trilaterate" (tested less accurate indoors)
+track = "all"              # "all" or "known" (only [[devices]] above)
+
+[server]
+host = "0.0.0.0"
+port = 8080
+username = "admin"         # protects the map; leave both empty to disable
+password = "change-me-too"
+sensor_token = ""          # required for /api/observations; empty disables it
+
+[map]
+center = [39.73923, -104.99015]
+zoom = 20
+base = "satellite"         # "satellite", "streets", or "blank"
+
+# Your own floor plan drawn on top of the map (and in Google Earth).
+# bounds = [[south_lat, west_lon], [north_lat, east_lon]] of the image corners.
+# [map.floorplan]
+# image = "floorplan.png"   # path relative to this config file
+# bounds = [[39.73908, -104.99035], [39.73940, -104.98995]]
+# opacity = 0.7
+# rotation = 0              # Google Earth only
