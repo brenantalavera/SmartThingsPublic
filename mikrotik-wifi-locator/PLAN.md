@@ -313,3 +313,19 @@ In priority order:
 - 5b software adds: roles, zones, the rules engine, safe stand-down logic (9.3), arrival/departure and delivery logs, guest expiry.
 - Confirmed by owner: **"90" = Building 90, the package delivery building**. Both use cases (crew stand-down, UPS/FedEx arrivals) apply there.
 - Still to confirm: Building 90's location on the map, whether it has power/network and a camera for the sensor, shift hours, carriers, and the alert recipients for each role.
+
+---
+
+## 10. Reusing the existing MikroTik gear (owner asked)
+
+| Need | Existing MikroTik APs can do it? | Notes |
+|---|---|---|
+| Green/blue: crew and drivers **connected** to Wi-Fi at Building 90 | **Yes, today, no new hardware** | Already built (registration table + DHCP names). Crew phones auto-join when in range = arrival detection |
+| Backhaul, PoE power, network to every sensor location | **Yes** | MikroTik remains the backbone for whatever sensors are added |
+| Red: Wi-Fi devices that **aren't connected** | **Partly, with trade-offs** | `/interface wireless sniffer` (legacy) or `/interface/wifi/sniffer` captures probe requests with signal strength and streams them to a server (TZSP over UDP). **But the radio stops serving clients while sniffing.** Only viable on a spare/second radio, or on a cheap spare MikroTik unit dedicated to sniffing. API control of the sniffer is limited, so a Linux host must parse the TZSP stream. Needs a lab test (does the wifi-package sniffer work on our models, is per-frame RSSI present in the stream). |
+| Red: **Bluetooth** devices (best signal for locked iPhones) | **No** with regular APs (they have no Bluetooth) | MikroTik's **KNOT** IoT gateway has a Bluetooth scanner (`/iot bluetooth scanners advertisements`: address, RSSI, data) and can forward via MQTT/HTTP with an RSSI filter. Docs are written around MikroTik's own BLE tags. Scanning other devices' advertisements should work with custom scripts, but that's unverified. |
+
+**Recommended path to test first:** (1) Use what's already built for the connected-device cases at Building 90.
+(2) Lab test: one spare MikroTik as a dedicated Wi-Fi sniffer streaming to a small Linux box, plus (optionally) one KNOT for BLE.
+Compare against a Raspberry Pi + Kismet. Choose whichever detects locked phones best per dollar, then standardise.
+Sources: help.mikrotik.com IoT/Bluetooth docs (KNOT scanner), manual.mikrotik.com wireless sniffer, MikroTik forum threads on probe-request sniffing.
