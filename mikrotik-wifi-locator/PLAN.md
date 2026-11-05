@@ -259,7 +259,7 @@ Owner's use cases:
 | Role | Colour | How a device gets it | Default behaviour |
 |---|---|---|---|
 | Crew / family | green | Registered: Wi-Fi MAC (from the MikroTik DHCP lease), BLE IRK, or companion-app beacon | Log arrival/departure, no alarm |
-| Delivery – UPS / FedEx / other | blue | Driver phone MAC registered after it joins the Wi-Fi (label it in the DHCP lease comment, e.g. `UPS – route 12`) | Notify "UPS arrived at delivery building 10:42"; log the departure time |
+| Delivery – UPS / FedEx / other | blue | Driver phone MAC registered after it joins the Wi-Fi (label it in the DHCP lease comment, e.g. `UPS – route 12`) | Notify "UPS arrived at Building 90 10:42"; log the departure time |
 | Visitor (expected) | purple | Temporary registration with an expiry (guest Wi-Fi lease, or added for N days) | Notify, no alarm |
 | Unknown | amber or red | Anything not registered | Depends on zone and time (9.2) |
 | Our drones / vehicles | grey | Registered Remote ID serials and vehicle Bluetooth/Wi-Fi | Hidden or shown dim |
