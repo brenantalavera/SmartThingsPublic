@@ -364,3 +364,37 @@ It's low-risk (read-only) and gives the next session real data instead of assump
 - CAPsMAN (one or several controllers) or standalone APs? Is The Dude in use?
 - RouterOS versions in the fleet (any still on v6?) and roughly which models.
 - Is there a management VLAN the locator server can reach every device on?
+
+---
+
+## 12. Pilot at HQ ("117", per owner)
+
+Owner chose **HQ** as the pilot site, using the existing MikroTik equipment there (owner wrote "HQ 117 equipment":
+building 117 or 117 devices, **confirm**). The goal is to prove or disprove each layer on real gear before any ranch-wide rollout.
+
+### 12.1 Build before the pilot (software, no hardware needed)
+1. Inventory script (§11 Step 0), run against HQ only.
+2. Concurrent router polling plus bulk AP import (§11 gaps 1–2).
+3. Roles, zones, rules, safe stand-down, event log (§9).
+4. A **TZSP receiver** for MikroTik sniffer streams (parse 802.11 probe requests and signal strength) as a new sensor source, plus a Kismet source for comparison.
+5. A demo of all of the above in simulation, signed off by the owner before going on site.
+
+### 12.2 Pilot steps at HQ
+| Step | What | Hardware | Pass if |
+|---|---|---|---|
+| A. Connect | Read-only user on HQ devices (or their CAPsMAN controller); run the inventory; `--once` | Existing + 1 server (laptop/Pi/VM on the management network) | All HQ devices inventoried; clients visible with signal |
+| B. Connected tracking | Place APs on the map, calibrate, walk test with crew phones | Existing | Correct AP zone ≥ 80% of the time; arrival logged within 1 min |
+| C. Roles drill | Crew arrival → stand-down; "delivery" drill with a phone registered as a driver → blue notification; unregistered volunteer phone → red | Existing | Every scenario behaves per §9.3 (incl. crew + unknown together = red) |
+| D. MikroTik as listener | 1–2 **spare** radios/units at HQ as dedicated sniffers streaming TZSP to the server | Existing spares | A locked phone is detected within 2 min in ≥ 80% of trials; no impact on the Wi-Fi people use |
+| E. Comparison | Raspberry Pi + Kismet at the same spot; optional KNOT for Bluetooth | ~$150 (+ KNOT, optional) | Decide the standard sensor per detection-per-dollar |
+| F. Baseline week | Run unattended for 7 days | — | Count false reds per day; tune thresholds until ≤ an agreed number (e.g. ≤ 2/day) |
+
+### 12.3 Pilot report (the decision document for rollout)
+Detection rate and range per method (connected / MikroTik sniffer / Kismet / KNOT), false alarms per day, Wi-Fi impact,
+cost per sensor location, and a recommendation on which existing units to convert and where to add hardware. Then roll out to Building 90 and camera poles.
+
+### 12.4 Needed from the owner for the pilot
+- What "117" refers to; a list or sketch of HQ's MikroTik devices (or let the inventory find them).
+- Which HQ units/radios are spare or safe to convert to sniffers (no backhaul links).
+- A server spot on the management network.
+- 2–3 volunteers with iPhone and Android phones, one of them unregistered, for the drills.
